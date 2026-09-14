@@ -1,0 +1,37 @@
+<!doctype html>
+<title>Leapfrog voice decoder</title>
+<script src="main.bc.js"></script>
+<h2>Leapfrog voice decoder</h2>
+<p>ROM: <input type="file" id="rom" /></p>
+<p>
+  Offset: <input id="offset" placeholder="0x2bde46" />
+  <button onclick="convertOne()">Convert one</button>
+  <button onclick="convertAll()">Convert all</button>
+</p>
+<div id="out"></div>
+<script>
+  async function load() {
+    return new Uint8Array(await rom.files[0].arrayBuffer())
+  }
+  function add(name, wav) {
+    const url = URL.createObjectURL(
+      new Blob([Uint8Array.from(wav, (c) => c.charCodeAt(0))], {
+        type: 'audio/wav',
+      }),
+    )
+    const div = document.createElement('div')
+    div.innerHTML = `<a href="${url}" download="${name}">${name}</a> <audio controls src="${url}"></audio>`
+    out.appendChild(div)
+  }
+  async function convertOne() {
+    const off = parseInt(offset.value)
+    add(off.toString(16).padStart(6, '0') + '.wav', convert(await load(), off))
+  }
+  async function convertAll() {
+    const bytes = await load()
+    for (const off of streamOffsets(bytes)) {
+      add(off.toString(16).padStart(6, '0') + '.wav', convert(bytes, off))
+      await new Promise((r) => setTimeout(r))
+    }
+  }
+</script>

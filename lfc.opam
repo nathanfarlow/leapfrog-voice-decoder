@@ -5,7 +5,7 @@ maintainer: ["Nathan Farlow"]
 authors: ["Nathan Farlow"]
 license: "LICENSE"
 depends: [
-  "ocaml"
+  "ocaml" {>= "5.4"}
   "dune" {>= "3.24"}
   "core"
   "core_kernel"

@@ -22,7 +22,7 @@ RUN opam init -y --disable-sandboxing --compiler=5.4.0 && \
     echo 'eval $(opam env)' >> ~/.profile
 
 COPY --chown=ubuntu:ubuntu . src
-RUN cd src && opam exec -- dune build && opam exec -- dune runtest
+RUN cd src && opam exec -- dune build bin && opam exec -- dune runtest
 
 FROM ubuntu:24.04
 

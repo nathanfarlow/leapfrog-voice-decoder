@@ -1,0 +1,8 @@
+(executable
+ (name main)
+ (modes js)
+ (libraries lfc js_of_ocaml))
+
+(alias
+ (name default)
+ (deps main.bc.js index.html))

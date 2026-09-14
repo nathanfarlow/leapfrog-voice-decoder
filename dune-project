@@ -19,7 +19,8 @@
  (name lfc)
  (synopsis "Decode Leapster LFC voice streams to WAV")
  (depends
-  ocaml
+  (ocaml
+   (>= 5.4))
   dune
   core
   core_kernel
