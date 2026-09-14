@@ -1,0 +1,6 @@
+(executable
+ (public_name lfc)
+ (name main)
+ (libraries lfc async core core_unix.command_unix)
+ (preprocess
+  (pps ppx_jane)))
