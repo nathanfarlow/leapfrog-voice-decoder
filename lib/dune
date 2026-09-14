@@ -1,6 +1,7 @@
 (library
  (name lfc)
  (libraries core core_kernel.iobuf)
- (inline_tests)
+ (inline_tests
+  (modes best js))
  (preprocess
   (pps ppx_jane)))

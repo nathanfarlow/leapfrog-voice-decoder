@@ -1,6 +1,7 @@
 (library
  (name test_lfc)
  (libraries core lfc)
- (inline_tests)
+ (inline_tests
+  (modes best js))
  (preprocess
   (pps ppx_jane)))
