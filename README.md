@@ -11,7 +11,9 @@ with the default seed!
 
 ## Quick start
 
-Install Docker, then clone the repo and build the image:
+[Try it out online!](https://nathanfarlow.github.io/leapfrog-voice-decoder)
+
+Otherwise, install Docker, then clone the repo and build the image:
 
 ```bash
 git clone https://github.com/nathanfarlow/leapfrog-voice-decoder
