@@ -1,17 +1,22 @@
 <!doctype html>
 <title>Leapfrog voice decoder</title>
 <script src="main.bc.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <h2>Leapfrog voice decoder</h2>
 <p>ROM: <input type="file" id="rom" /></p>
 <p>
   Offset: <input id="offset" placeholder="0x2bde46" />
   <button onclick="convertOne()">Convert one</button>
   <button onclick="convertAll()">Convert all</button>
+  <button onclick="downloadZip()">Download all as zip</button>
 </p>
 <div id="out"></div>
 <script>
   async function load() {
     return new Uint8Array(await rom.files[0].arrayBuffer())
+  }
+  function name(off) {
+    return off.toString(16).padStart(6, '0') + '.wav'
   }
   function add(name, wav) {
     const url = URL.createObjectURL(
@@ -25,13 +30,23 @@
   }
   async function convertOne() {
     const off = parseInt(offset.value)
-    add(off.toString(16).padStart(6, '0') + '.wav', convert(await load(), off))
+    add(name(off), convert(await load(), off))
   }
   async function convertAll() {
     const bytes = await load()
     for (const off of streamOffsets(bytes)) {
-      add(off.toString(16).padStart(6, '0') + '.wav', convert(bytes, off))
+      add(name(off), convert(bytes, off))
       await new Promise((r) => setTimeout(r))
     }
+  }
+  async function downloadZip() {
+    const bytes = await load()
+    const zip = new JSZip()
+    for (const off of streamOffsets(bytes))
+      zip.file(name(off), convert(bytes, off), { binary: true })
+    const a = document.createElement('a')
+    a.href = URL.createObjectURL(await zip.generateAsync({ type: 'blob' }))
+    a.download = rom.files[0].name.replace(/\.[^.]*$/, '') + '.zip'
+    a.click()
   }
 </script>
