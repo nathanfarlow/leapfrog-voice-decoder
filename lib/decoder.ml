@@ -23,7 +23,7 @@ module U16Parser = struct
 end
 
 (** A half word that encodes the type of each of the 6 records in a frame. *)
-module PulseInfo = struct
+module FrameInfo = struct
   module Record = struct
     type t =
       { is_present : bool
@@ -95,7 +95,7 @@ module Record = struct
     | Silent
   [@@deriving sexp_of]
 
-  let parse ~pulse_mode ~(record : PulseInfo.Record.t) stream =
+  let parse ~pulse_mode ~(record : FrameInfo.Record.t) stream =
     let make_take () = take_u16 stream |> U16Parser.create |> U16Parser.take in
     match record.is_present, record.is_pulsed with
     | false, _ -> Silent
@@ -183,14 +183,14 @@ module Frame = struct
   [@@deriving sexp_of]
 
   let parse_mask_and_filter stream =
-    let mask = PulseInfo.parse stream in
+    let mask = FrameInfo.parse stream in
     let filter =
-      if PulseInfo.has_present mask then Some (Filter.parse stream) else None
+      if FrameInfo.has_present mask then Some (Filter.parse stream) else None
     in
     ~mask, ~filter
   ;;
 
-  let parse ~pulse_mode ~(mask : PulseInfo.t) ~filter stream =
+  let parse ~pulse_mode ~(mask : FrameInfo.t) ~filter stream =
     let ~mask:next_mask, ~filter:next_filter = parse_mask_and_filter stream in
     let records =
       List.map mask ~f:(fun record -> Record.parse ~pulse_mode ~record stream)
@@ -210,7 +210,7 @@ module Stream = struct
   let parse stream =
     let pulse_mode = take_u16 stream in
     let rec parse_frame (~mask, ~filter) =
-      match PulseInfo.marks_end_of_stream mask with
+      match FrameInfo.marks_end_of_stream mask with
       | true -> []
       | false ->
         let ~frame, ~next_mask, ~next_filter =
@@ -268,8 +268,8 @@ module Render = struct
           filter ~k ~b (excitation stream record)))
     in
     let initial_silence = List.init 32 ~f:(Fn.const 0) in
-    let ring_down = filter (List.init 160 ~f:(Fn.const 0)) ~k ~b in
-    initial_silence @ records @ ring_down
+    let decay = filter (List.init 192 ~f:(Fn.const 0)) ~k ~b in
+    initial_silence @ records @ decay
   ;;
 end
 
