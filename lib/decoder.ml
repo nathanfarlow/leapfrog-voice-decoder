@@ -23,8 +23,8 @@ module U16Parser = struct
 end
 
 (** A half word that encodes the type of each of the 6 records in a frame. *)
-module FrameInfo = struct
-  module Record = struct
+module RecordInfos = struct
+  module Info = struct
     type t =
       { is_present : bool
       ; is_pulsed : bool
@@ -32,21 +32,26 @@ module FrameInfo = struct
     [@@deriving fields ~getters]
   end
 
-  type t = Record.t list
+  type t = Info.t list
 
   let parse stream =
-    let parser = U16Parser.create (take_u16 stream) in
-    let take_6_bools () =
-      Array.init 6 ~f:(fun _ -> U16Parser.take parser 1 <> 0) |> Array.to_list
-    in
-    let present = take_6_bools () in
-    let pulsed = take_6_bools () in
-    List.zip_exn present pulsed
-    |> List.rev_map ~f:(fun (is_present, is_pulsed) -> { Record.is_present; is_pulsed })
+    match take_u16 stream with
+    | 0x0fc0 -> `End_of_stream
+    | mask ->
+      let parser = U16Parser.create mask in
+      let take_6_bools () =
+        Array.init 6 ~f:(fun _ -> U16Parser.take parser 1 <> 0) |> Array.to_list
+      in
+      let present = take_6_bools () in
+      let pulsed = take_6_bools () in
+      let records =
+        List.zip_exn present pulsed
+        |> List.rev_map ~f:(fun (is_present, is_pulsed) -> { Info.is_present; is_pulsed })
+      in
+      `Ok records
   ;;
 
-  let has_present = List.exists ~f:Record.is_present
-  let marks_end_of_stream t = (not (has_present t)) && List.for_all t ~f:Record.is_pulsed
+  let has_present = List.exists ~f:Info.is_present
 end
 
 module Sign = struct
@@ -95,7 +100,7 @@ module Record = struct
     | Silent
   [@@deriving sexp_of]
 
-  let parse ~pulse_mode ~(record : FrameInfo.Record.t) stream =
+  let parse ~pulse_mode ~(record : RecordInfos.Info.t) stream =
     let make_take () = take_u16 stream |> U16Parser.create |> U16Parser.take in
     match record.is_present, record.is_pulsed with
     | false, _ -> Silent
@@ -182,20 +187,22 @@ module Frame = struct
     }
   [@@deriving sexp_of]
 
-  let parse_mask_and_filter stream =
-    let mask = FrameInfo.parse stream in
-    let filter =
-      if FrameInfo.has_present mask then Some (Filter.parse stream) else None
-    in
-    ~mask, ~filter
+  let parse_header stream =
+    match RecordInfos.parse stream with
+    | `End_of_stream -> `End_of_stream
+    | `Ok record_infos ->
+      let filter =
+        if RecordInfos.has_present record_infos then Some (Filter.parse stream) else None
+      in
+      `Ok (~record_infos, ~filter)
   ;;
 
-  let parse ~pulse_mode ~(mask : FrameInfo.t) ~filter stream =
-    let ~mask:next_mask, ~filter:next_filter = parse_mask_and_filter stream in
+  let parse ~pulse_mode ~(record_infos : RecordInfos.t) ~filter stream =
+    let next = parse_header stream in
     let records =
-      List.map mask ~f:(fun record -> Record.parse ~pulse_mode ~record stream)
+      List.map record_infos ~f:(fun record -> Record.parse ~pulse_mode ~record stream)
     in
-    ~frame:{ filter; records }, ~next_mask, ~next_filter
+    ~frame:{ filter; records }, ~next
   ;;
 end
 
@@ -209,16 +216,13 @@ module Stream = struct
 
   let parse stream =
     let pulse_mode = take_u16 stream in
-    let rec parse_frame (~mask, ~filter) =
-      match FrameInfo.marks_end_of_stream mask with
-      | true -> []
-      | false ->
-        let ~frame, ~next_mask, ~next_filter =
-          Frame.parse ~pulse_mode ~mask ~filter stream
-        in
-        frame :: parse_frame (~mask:next_mask, ~filter:next_filter)
+    let rec parse_frames = function
+      | `End_of_stream -> []
+      | `Ok (~record_infos, ~filter) ->
+        let ~frame, ~next = Frame.parse ~pulse_mode ~record_infos ~filter stream in
+        frame :: parse_frames next
     in
-    let frames = parse_frame (Frame.parse_mask_and_filter stream) in
+    let frames = parse_frames (Frame.parse_header stream) in
     { pulse_mode; frames }
   ;;
 end
@@ -268,7 +272,11 @@ module Render = struct
           filter ~k ~b (excitation stream record)))
     in
     let initial_silence = List.init 32 ~f:(Fn.const 0) in
-    let decay = filter (List.init 192 ~f:(Fn.const 0)) ~k ~b in
+    let decay =
+      match List.is_empty records with
+      | true -> []
+      | false -> filter (List.init 192 ~f:(Fn.const 0)) ~k ~b
+    in
     initial_silence @ records @ decay
   ;;
 end
