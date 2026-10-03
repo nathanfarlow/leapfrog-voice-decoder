@@ -3,9 +3,6 @@
 Renders the "LFC" voice streams as WAV files. Used by the Leapster, the Leapster
 LMAX, the Leapster 2, and LeapPad.
 
-Note that is barely imperfect still as some of the values are off by one or two
-in [tables.ml](lib/tables.ml). Still working on that!
-
 Fun trivia: the noise table in the decoder was generated with bsd's `random()`
 with the default seed!
 
