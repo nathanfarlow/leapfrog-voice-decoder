@@ -23,7 +23,7 @@ module U16Parser = struct
 end
 
 (** A half word that encodes the type of each of the 6 records in a frame. *)
-module RecordInfos = struct
+module RecordConfig = struct
   module Info = struct
     type t =
       { is_present : bool
@@ -73,6 +73,23 @@ module Sign = struct
   ;;
 end
 
+module StreamConfig = struct
+  type t =
+    { pulse_mode : int
+      (** 0, 1, or 2. Denotes how many pulses per pulsed record: 4, 6, or 8. *)
+    ; odd_samples_only : bool
+      (** If true, skip every other sample. Why does this exist? *)
+    }
+  [@@deriving sexp_of]
+
+  let parse stream =
+    let word = take_u16 stream in
+    let pulse_mode = min (word land 3) 2 in
+    let odd_samples_only = word land 4 <> 0 in
+    { pulse_mode; odd_samples_only }
+  ;;
+end
+
 (** A record is 32 samples. *)
 module Record = struct
   module Pulses = struct
@@ -100,7 +117,7 @@ module Record = struct
     | Silent
   [@@deriving sexp_of]
 
-  let parse ~pulse_mode ~(record : RecordInfos.Info.t) stream =
+  let parse ~(config : StreamConfig.t) ~(record : RecordConfig.Info.t) stream =
     let make_take () = take_u16 stream |> U16Parser.create |> U16Parser.take in
     match record.is_present, record.is_pulsed with
     | false, false -> Silent
@@ -116,7 +133,7 @@ module Record = struct
       let shape = take 6 in
       let signs take n = Array.init n ~f:(fun _ -> take 1 |> Sign.of_int) in
       let pairs =
-        match pulse_mode with
+        match config.pulse_mode with
         | 0 ->
           let pos1 = take 5 in
           let take = make_take () in
@@ -186,19 +203,21 @@ module Frame = struct
   [@@deriving sexp_of]
 
   let parse_header stream =
-    match RecordInfos.parse stream with
+    match RecordConfig.parse stream with
     | `End_of_stream -> `End_of_stream
-    | `Ok record_infos ->
+    | `Ok record_config ->
       let filter =
-        if RecordInfos.has_present record_infos then Some (Filter.parse stream) else None
+        if RecordConfig.has_present record_config
+        then Some (Filter.parse stream)
+        else None
       in
-      `Ok (~record_infos, ~filter)
+      `Ok (~record_config, ~filter)
   ;;
 
-  let parse ~pulse_mode ~(record_infos : RecordInfos.t) ~filter stream =
+  let parse ~config ~(record_config : RecordConfig.t) ~filter stream =
     let next = parse_header stream in
     let records =
-      List.map record_infos ~f:(fun record -> Record.parse ~pulse_mode ~record stream)
+      List.map record_config ~f:(fun record -> Record.parse ~config ~record stream)
     in
     ~frame:{ filter; records }, ~next
   ;;
@@ -206,37 +225,36 @@ end
 
 module Stream = struct
   type t =
-    { pulse_mode : int
-      (** 0, 1, or 2. Denotes how many pulses per pulsed record: 4, 6, or 8. *)
+    { config : StreamConfig.t
     ; frames : Frame.t list
     }
   [@@deriving sexp_of]
 
   let parse stream =
-    let pulse_mode = take_u16 stream in
+    let config = StreamConfig.parse stream in
     let rec parse_frames = function
       | `End_of_stream -> []
-      | `Ok (~record_infos, ~filter) ->
-        let ~frame, ~next = Frame.parse ~pulse_mode ~record_infos ~filter stream in
+      | `Ok (~record_config, ~filter) ->
+        let ~frame, ~next = Frame.parse ~config ~record_config ~filter stream in
         frame :: parse_frames next
     in
     let frames =
       match Frame.parse_header stream with
-      | `Ok (~record_infos, ~filter:None) as header ->
+      | `Ok (~record_config, ~filter:None) as header ->
         (* A strange special case when there are no present records on the first
            frame. *)
         let records =
-          List.map record_infos ~f:(fun record -> Record.parse ~pulse_mode ~record stream)
+          List.map record_config ~f:(fun record -> Record.parse ~config ~record stream)
         in
         { Frame.filter = None; records } :: parse_frames header
       | header -> parse_frames header
     in
-    { pulse_mode; frames }
+    { config; frames }
   ;;
 end
 
 module Render = struct
-  let excitation (stream : Stream.t) (record : Record.t) =
+  let excitation (config : StreamConfig.t) (record : Record.t) =
     match record with
     | Silent -> List.init 32 ~f:(Fn.const 0)
     | Noise { row; gain; sign } ->
@@ -244,12 +262,12 @@ module Render = struct
       List.init 32 ~f:(fun i -> Q15.mul loudness Tables.noise.(row).(i))
     | Pulses { gain; shape; pairs } ->
       let excitation = Array.init 32 ~f:(Fn.const 0) in
-      let loudest = Tables.gain.(stream.pulse_mode).(gain) in
+      let loudest = Tables.gain.(config.pulse_mode).(gain) in
       List.iteri pairs ~f:(fun i { Record.Pulses.position; sign } ->
         let amplitude =
           match i with
           | 0 -> loudest
-          | _ -> Q15.mul loudest Tables.shape.(stream.pulse_mode).(shape).(i - 1)
+          | _ -> Q15.mul loudest Tables.shape.(config.pulse_mode).(shape).(i - 1)
         in
         excitation.(position) <- Sign.apply sign amplitude);
       Array.to_list excitation
@@ -277,7 +295,7 @@ module Render = struct
          | Some filter ->
            List.iteri filter ~f:(fun i code -> k.(i) <- Tables.k.(i).(code)));
         List.concat_map frame.records ~f:(fun record ->
-          filter ~k ~b (excitation stream record)))
+          filter ~k ~b (excitation stream.config record)))
     in
     let initial_silence = List.init 32 ~f:(Fn.const 0) in
     let decay =
@@ -285,7 +303,10 @@ module Render = struct
       | true -> []
       | false -> filter (List.init 192 ~f:(Fn.const 0)) ~k ~b
     in
-    initial_silence @ records @ decay
+    let samples = initial_silence @ records @ decay in
+    match stream.config.odd_samples_only with
+    | false -> samples
+    | true -> List.filteri samples ~f:(fun i _ -> i % 2 = 1)
   ;;
 end
 
