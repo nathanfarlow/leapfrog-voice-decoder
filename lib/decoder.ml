@@ -103,14 +103,14 @@ module Record = struct
   let parse ~pulse_mode ~(record : RecordInfos.Info.t) stream =
     let make_take () = take_u16 stream |> U16Parser.create |> U16Parser.take in
     match record.is_present, record.is_pulsed with
-    | false, _ -> Silent
+    | false, false -> Silent
     | true, false ->
       let take = make_take () in
       let row = take 8 in
       let gain = take 5 in
       let sign = take 1 |> Sign.of_int in
       Noise { row; gain; sign }
-    | true, true ->
+    | _, true ->
       let take = make_take () in
       let gain = take 5 in
       let shape = take 6 in
@@ -118,16 +118,14 @@ module Record = struct
       let pairs =
         match pulse_mode with
         | 0 ->
-          ignore @@ take 1;
-          let pos1 = take 4 in
+          let pos1 = take 5 in
           let take = make_take () in
           let signs = signs take 4 in
-          let pos2 = take 4 in
-          let pos3 = take 4 in
-          let pos4 = take 4 in
+          let pos2 = take 4 lsl 1 in
+          let pos3 = take 4 lsl 1 in
+          let pos4 = take 4 lsl 1 in
           List.zip_exn (Array.to_list signs) [ pos1; pos2; pos3; pos4 ]
-          |> List.map ~f:(fun (sign, position) ->
-            { Pulses.sign; position = position * 2 })
+          |> List.map ~f:(fun (sign, position) -> { Pulses.sign; position })
         | 1 ->
           let pos1 = take 5 in
           let take = make_take () in
