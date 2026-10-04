@@ -16,7 +16,7 @@ USER ubuntu
 WORKDIR /home/ubuntu
 
 RUN opam init -y --disable-sandboxing --compiler=5.4.0 && \
-    opam install dune core async core_unix ppx_jane && \
+    opam install dune core async core_unix ppx_jane ppx_blob && \
     opam clean -a -c -s --logs -r && \
     rm -rf ~/.opam/download-cache && \
     echo 'eval $(opam env)' >> ~/.profile

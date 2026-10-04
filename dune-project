@@ -26,5 +26,6 @@
   core_kernel
   core_unix
   async
-  ppx_jane))
+  ppx_jane
+  (ppx_blob :with-test)))
 

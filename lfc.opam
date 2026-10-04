@@ -12,6 +12,7 @@ depends: [
   "core_unix"
   "async"
   "ppx_jane"
+  "ppx_blob" {with-test}
   "odoc" {with-doc}
 ]
 build: [

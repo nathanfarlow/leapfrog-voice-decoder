@@ -3,5 +3,7 @@
  (libraries core lfc)
  (inline_tests
   (modes best js))
+ (preprocessor_deps
+  (glob_files samples/*))
  (preprocess
-  (pps ppx_jane)))
+  (pps ppx_jane ppx_blob)))
