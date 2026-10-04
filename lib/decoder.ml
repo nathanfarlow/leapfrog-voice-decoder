@@ -222,7 +222,17 @@ module Stream = struct
         let ~frame, ~next = Frame.parse ~pulse_mode ~record_infos ~filter stream in
         frame :: parse_frames next
     in
-    let frames = parse_frames (Frame.parse_header stream) in
+    let frames =
+      match Frame.parse_header stream with
+      | `Ok (~record_infos, ~filter:None) as header ->
+        (* A strange special case when there are no present records on the first
+           frame. *)
+        let records =
+          List.map record_infos ~f:(fun record -> Record.parse ~pulse_mode ~record stream)
+        in
+        { Frame.filter = None; records } :: parse_frames header
+      | header -> parse_frames header
+    in
     { pulse_mode; frames }
   ;;
 end
